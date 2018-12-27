@@ -71,6 +71,16 @@
 			<artifactId>ml-javaclient-util</artifactId>
 			<version>3.6.0</version>
 		</dependency>
+		<dependency>
+			<groupId>com.marklogic.spark</groupId>
+			<artifactId>ml-spark-connector</artifactId>
+			<version>1.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.marklogic.spark</groupId>
+			<artifactId>ml-spark-java-connector</artifactId>
+			<version>1.0</version>
+		</dependency>
 	</dependencies>
 	<repositories>
 		<repository>

@@ -32,5 +32,7 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
+	<classpathentry kind="lib" path="C:/spark-connector/target/ml-spark-java-connector-0.0.1-SNAPSHOT-jar-with-dependencies.jar"/>
+	<classpathentry kind="lib" path="C:/spark-scala-connector/MarkLogic-Spark-Connector-master/build/libs/MarkLogic-Spark-Connector-master-1.0.jar"/>
 	<classpathentry kind="output" path="target/classes"/>
 </classpath>
