@@ -40,21 +40,22 @@ import com.marklogic.client.io.JacksonDatabindHandle;
 
 public class SparkStreamingApp {
 	public static List<String> keywords = new ArrayList<String>();
-	public static ObjectMapper mapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+	public static ObjectMapper mapper = new ObjectMapper()
+			.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
 			.enable(SerializationFeature.INDENT_OUTPUT).disable(DeserializationFeature.UNWRAP_ROOT_VALUE);
-  private static final AtomicLong runningSum = new AtomicLong(0);
-  private static final AtomicLong runningCount = new AtomicLong(0);
-  private static Function2<Long, Long, Long> SUM_REDUCER = (a, b) -> a + b;
-  private static Date dt;
-  private static SimpleDateFormat simpleDateFormat;
-  private static String dateAsString;
-  private static DatabaseClient client ;
-  
-  public static void main(String[] args) throws InterruptedException, IOException {
+	private static final AtomicLong runningSum = new AtomicLong(0);
+	private static final AtomicLong runningCount = new AtomicLong(0);
+	private static Function2<Long, Long, Long> SUM_REDUCER = (a, b) -> a + b;
+	private static Date dt;
+	private static SimpleDateFormat simpleDateFormat;
+	private static String dateAsString;
+	private static DatabaseClient client;
+
+	public static void main(String[] args) throws InterruptedException, IOException {
 		Logger.getLogger("org").setLevel(Level.ERROR);
 		Logger.getLogger("akka").setLevel(Level.ERROR);
 		Logger.getRootLogger().setLevel(Level.ERROR);
-		
+
 		String fileName = args[0];
 		Properties prop = new Properties();
 		FileInputStream input = null;
@@ -65,30 +66,28 @@ public class SparkStreamingApp {
 		String windowDuration = prop.getProperty("windowDuration");
 		String slideDuration = prop.getProperty("slideDuration");
 		String nifiHost = prop.getProperty("nifiHost");
-		
+
 		String dbUser = prop.getProperty("mlUser");
 		String dbHost = prop.getProperty("mlHost");
 		int dbPort = Integer.parseInt(prop.getProperty("mlPort"));
 		String dbPwd = prop.getProperty("mlPwd");
 		String mlOrderCollection = prop.getProperty("mlOrderCollection");
 		String mlDbName = prop.getProperty("mlDbName");
-		
+
 		client = DatabaseClientFactory.newClient(dbHost, dbPort, mlDbName,
 				new DatabaseClientFactory.DigestAuthContext(dbUser, dbPwd));
 
-		
-		
 		SparkSession spark = SparkSession.builder().appName("NiFi-Spark Streaming example").getOrCreate();
 		JavaSparkContext ctx = new JavaSparkContext(spark.sparkContext());
 		JavaStreamingContext ssc = new JavaStreamingContext(ctx, new Duration(1000L));
 		ssc.checkpoint(checkPointDir);
-		SiteToSiteClientConfig config = new SiteToSiteClient.Builder().url(nifiHost)
-				.portName("Data For Spark").buildConfig();
+		SiteToSiteClientConfig config = new SiteToSiteClient.Builder().url(nifiHost).portName("Data For Spark")
+				.buildConfig();
 		JavaReceiverInputDStream<?> packetStream = ssc
 				.receiverStream(new NiFiReceiver(config, StorageLevel.MEMORY_ONLY()));
 		JavaDStream<String> content = packetStream
 				.map(dataPacket -> new String(((NiFiDataPacket) dataPacket).getContent(), StandardCharsets.UTF_8));
-		//content.print();
+		// content.print();
 
 		List<Order> lstOrder = new ArrayList<Order>();
 		JavaDStream<List<Order>> orderStream = content.map(new Function<String, List<Order>>() {
@@ -100,44 +99,41 @@ public class SparkStreamingApp {
 				return lstOrder;
 			}
 		});
-		
-		orderStream.foreachRDD(rdd ->  { 
+
+		orderStream.foreachRDD(rdd -> {
 			List<List<Order>> lstOrders = rdd.collect();
 			List<Order> lstInnerOrder;
-			for (int i=0; i< lstOrders.size(); i++) {
-				lstInnerOrder = lstOrders.get(i); 
-				for (int j=0; j< lstOrder.size(); j++) {
+			for (int i = 0; i < lstOrders.size(); i++) {
+				lstInnerOrder = lstOrders.get(i);
+				for (int j = 0; j < lstOrder.size(); j++) {
 					System.out.println(lstInnerOrder.get(j).getQuantity());
 				}
 			}
 		});
-		
 
-        JavaDStream<Long> totalOrders = content.countByWindow(Duration.apply(Long.parseLong(windowDuration)), 
-    		  												Duration.apply(Long.parseLong(slideDuration)));
+		JavaDStream<Long> totalOrders = content.countByWindow(Duration.apply(Long.parseLong(windowDuration)),
+				Duration.apply(Long.parseLong(slideDuration)));
 
-        
-      totalOrders.foreachRDD(rdd -> {
-          if (rdd.count() > 0) {
-            runningSum.getAndAdd(rdd.reduce(SUM_REDUCER));
-            runningCount.getAndAdd(rdd.count());
-            System.out.print("Running Count of Orders is " + runningSum.get() + "\n");
-            Date dt = new Date();
-	        SimpleDateFormat sdf = new SimpleDateFormat("YYYYMMDDHHMMSS");
-	    	OrderStats orderstat = new OrderStats();
-	        orderstat.setOrderCountInBatch(rdd.collect().get(0));
-	        orderstat.setTotalOrderCount(runningSum.get() );
-	        orderstat.setStatsTime(dt.toString());
-			JacksonDatabindHandle handle = new JacksonDatabindHandle(orderstat);
-			JSONDocumentManager docMgr = client.newJSONDocumentManager();
-			DocumentMetadataHandle meta = new DocumentMetadataHandle();
-			meta.withCollections("stats");
-			docMgr.write("/stats/" + sdf.format(dt) + ".json",meta,handle);
-          }
-          return; 
-        });
-        
-      	
+		totalOrders.foreachRDD(rdd -> {
+			if (rdd.count() > 0) {
+				runningSum.getAndAdd(rdd.reduce(SUM_REDUCER));
+				runningCount.getAndAdd(rdd.count());
+				System.out.print("Running Count of Orders is " + runningSum.get() + "\n");
+				Date dt = new Date();
+				SimpleDateFormat sdf = new SimpleDateFormat("YYYYMMDDHHMMSS");
+				OrderStats orderstat = new OrderStats();
+				orderstat.setOrderCountInBatch(rdd.collect().get(0));
+				orderstat.setTotalOrderCount(runningSum.get());
+				orderstat.setStatsTime(dt.toString());
+				JacksonDatabindHandle handle = new JacksonDatabindHandle(orderstat);
+				JSONDocumentManager docMgr = client.newJSONDocumentManager();
+				DocumentMetadataHandle meta = new DocumentMetadataHandle();
+				meta.withCollections("stats");
+				docMgr.write("/stats/" + sdf.format(dt) + ".json", meta, handle);
+			}
+			return;
+		});
+
 		ssc.start();
 		ssc.awaitTermination();
 	}

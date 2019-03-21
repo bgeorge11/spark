@@ -7,6 +7,7 @@ import static org.apache.spark.sql.types.DataTypes.createStructType;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
@@ -29,13 +30,15 @@ import com.marklogic.client.DatabaseClient;
 import com.marklogic.client.DatabaseClientFactory;
 
 public class JavaConnectorTest {
-	
+
 	protected static String dbUser = "";
 	static String dbHost = "";
 	static int dbPort = 0;
 	static String dbPwd = "";
 	static String mlOrderCollection = "";
 	static String mlDbName = "";
+	static String modelPath = "";
+	static String includeTraining = "";
 
 	public static void main(String[] args) throws IOException, InterruptedException {
 
@@ -56,6 +59,8 @@ public class JavaConnectorTest {
 		dbPwd = prop.getProperty("mlPwd");
 		mlOrderCollection = prop.getProperty("mlOrderCollection");
 		mlDbName = prop.getProperty("mlDbName");
+		modelPath = prop.getProperty("pathToStoreModel");
+		includeTraining = prop.getProperty("includeTraining");
 
 		int numProductsToPredict = 0;
 
@@ -85,10 +90,10 @@ public class JavaConnectorTest {
 		SparkSession spark = SparkSession.builder().appName("MarkLogicSparkConnector").config(sparkConf).getOrCreate();
 		JavaConnectorOperations mlOperations = new JavaConnectorOperations();
 		Operations operations = new Operations();
-		
+
 		List<Row> training_data = operations
 				.getTrainingData(mlOperations.readOrderDataFromConnector(spark.sparkContext(), mlOrderCollection));
-		
+
 		List<String> uniqueProductList = operations.getUniqueProductList(training_data);
 		StructType schema = createStructType(new StructField[] { createStructField("year", IntegerType, false),
 				createStructField("product", StringType, false), createStructField("quantity", IntegerType, false) });
@@ -115,9 +120,9 @@ public class JavaConnectorTest {
 			Dataset<Row> input_for_regression = assembler.transform(transformed_training_dataset)
 					.filter(functions.col("product").equalTo(uniqueProductList.get(iCounter)));
 			executor.execute(new MyPredictionsRunnable(iCounter, spark, input_for_regression, indexer, schema,
-					uniqueProductList.get(iCounter)));
+					uniqueProductList.get(iCounter), modelPath, includeTraining));
 		}
-		executor.awaitTermination(1, TimeUnit.HOURS);
+		executor.awaitTermination(20, TimeUnit.MINUTES);
 		executor.shutdown(); // once you are done with ExecutorService
 		spark.stop();
 	}
@@ -131,28 +136,36 @@ class MyPredictionsRunnable implements Runnable {
 	StringIndexer indexer;
 	StructType schema;
 	String productName;
+	String modelPath;
+	String includeTraining;
 
 	public MyPredictionsRunnable(int i, SparkSession spark, Dataset<Row> input_for_regression, StringIndexer indexer,
-			StructType schema, String productName) {
+			StructType schema, String productName, String modelPath, String includeTraining) {
 		this.id = i;
 		this.spark = spark;
 		this.input_for_regression = input_for_regression;
 		this.indexer = indexer;
 		this.schema = schema;
 		this.productName = productName;
-		this.client = DatabaseClientFactory.newClient(JavaConnectorTest.dbHost, JavaConnectorTest.dbPort, JavaConnectorTest.mlDbName,
+		this.client = DatabaseClientFactory.newClient(JavaConnectorTest.dbHost, JavaConnectorTest.dbPort,
+				JavaConnectorTest.mlDbName,
 				new DatabaseClientFactory.DigestAuthContext(JavaConnectorTest.dbUser, JavaConnectorTest.dbPwd));
+		this.modelPath = modelPath;
+		this.includeTraining = includeTraining;
 	}
 
 	public void run() {
 		Operations operations = new Operations();
+		Date start = new Date();
 		try {
-			
+
 			System.out.println(
 					"Prediction for " + productName + " started by Thread " + Thread.currentThread().getName());
-			operations.performPrediction(spark, input_for_regression, client, indexer, schema, productName);
+			operations.performPrediction(spark, input_for_regression, client, indexer, schema, productName, modelPath,
+					includeTraining);
+			Date end = new Date();
 			System.out
-					.println("Prediction for " + productName + " ended by Thread " + Thread.currentThread().getName());
+					.println("Prediction for " + productName + " ended by Thread " + Thread.currentThread().getName() + " in  " + (end.getTime() - start.getTime()) / 1000 + " seconds.");
 		} catch (Exception err) {
 			err.printStackTrace();
 		}

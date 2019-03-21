@@ -5,7 +5,7 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
-@JsonPropertyOrder({ "product", "created", "predictions", "hyperParameters", "modelSummary"})
+@JsonPropertyOrder({ "product", "created", "predictions", "hyperParameters", "modelSummary" })
 public class PredictionList {
 
 	@JsonProperty("predictions")

@@ -2,6 +2,7 @@ package spark;
 
 public class ModelSummary {
 	Double rootMeanSquaredError;
+
 	public Double getRootMeanSquaredError() {
 		return rootMeanSquaredError;
 	}

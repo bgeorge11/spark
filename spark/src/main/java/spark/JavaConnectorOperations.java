@@ -20,40 +20,24 @@ import com.marklogic.spark.java.connector.MarkLogicDataSetPartitioner;
 import com.marklogic.spark.java.connector.MarkLogicPartition;
 import com.marklogic.spark.java.connector.SparkDocument;
 
-
 public class JavaConnectorOperations {
-	
-	public Dataset<String> getOrdersWithProductName (SparkSession spark,
-													  String schema,
-													  String view,
-													  String sqlCondition
-													  )
-	{
+
+	public Dataset<String> getOrdersWithProductName(SparkSession spark, String schema, String view,
+			String sqlCondition) {
 		MarkLogicDataSetPartitioner mlParts = new MarkLogicDataSetPartitioner();
-		return mlParts.getDataUsingTemplate(spark,schema,view,sqlCondition);
+		return mlParts.getDataUsingTemplate(spark, schema, view, sqlCondition);
 	}
-	
-	
-	public ArrayList<Order> readOrderDataFromConnector (SparkContext sc, 
-														String collection
-														) 
-										throws JsonParseException, JsonMappingException, IOException 
-	{
+
+	public ArrayList<Order> readOrderDataFromConnector(SparkContext sc, String collection)
+			throws JsonParseException, JsonMappingException, IOException {
 		StructuredQueryBuilder queryBuilder = new StructuredQueryBuilder();
-		ObjectMapper mapper = new ObjectMapper()
-								.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-								.enable(SerializationFeature.INDENT_OUTPUT)
-								.disable(DeserializationFeature.UNWRAP_ROOT_VALUE);
-		
+		ObjectMapper mapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+				.enable(SerializationFeature.INDENT_OUTPUT).disable(DeserializationFeature.UNWRAP_ROOT_VALUE);
+
 		String searchOptions = "<search:search xmlns:search=\"http://marklogic.com/appservices/search\">"
-				+ "<search:options>" 
-				+ "<search:additional-query>"
-				+ "<cts:collection-query xmlns:cts=\"http://marklogic.com/cts\">" 
-				+ "<cts:uri>" + collection
-				+ "</cts:uri>" 
-				+ " </cts:collection-query>" 
-				+ "</search:additional-query>" 
-				+ "</search:options>"
+				+ "<search:options>" + "<search:additional-query>"
+				+ "<cts:collection-query xmlns:cts=\"http://marklogic.com/cts\">" + "<cts:uri>" + collection
+				+ "</cts:uri>" + " </cts:collection-query>" + "</search:additional-query>" + "</search:options>"
 				+ "</search:search>";
 		StructuredQueryDefinition query = queryBuilder.collection(collection);
 		query.setOptionsName(searchOptions);
@@ -62,8 +46,8 @@ public class JavaConnectorOperations {
 		System.out.println("Number of Document parts = " + parts.length);
 		ArrayList<Order> lstOrders = new ArrayList<Order>();
 
-		for (int i=0; i<parts.length; i++) {
-			List<SparkDocument> sparkDocs =  mlParts.getDocumentsFromParts(sc,parts[i]);
+		for (int i = 0; i < parts.length; i++) {
+			List<SparkDocument> sparkDocs = mlParts.getDocumentsFromParts(sc, parts[i]);
 			Iterator<SparkDocument> sparkDocsIterator = sparkDocs.iterator();
 			while (sparkDocsIterator.hasNext()) {
 				SparkDocument doc = (SparkDocument) sparkDocsIterator.next();
@@ -73,5 +57,5 @@ public class JavaConnectorOperations {
 			}
 		}
 		return lstOrders;
-} 
 	}
+}

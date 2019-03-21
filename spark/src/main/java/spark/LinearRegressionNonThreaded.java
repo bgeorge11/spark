@@ -53,18 +53,18 @@ import com.marklogic.client.DatabaseClientFactory;
 public class LinearRegressionNonThreaded {
 
 	public static void main(String[] args) throws JsonParseException, JsonMappingException, IOException {
-		
+
 		Logger.getLogger("org").setLevel(Level.ERROR);
 		Logger.getLogger("akka").setLevel(Level.ERROR);
 		Logger.getRootLogger().setLevel(Level.ERROR);
-		
+
 		String fileName = args[0];
 		Properties prop = new Properties();
 		FileInputStream input = null;
 		input = new FileInputStream(fileName);
 		System.out.println("Loading properties... " + fileName);
 		prop.load(input);
-		
+
 		String dbUser = prop.getProperty("mlUser");
 		String dbHost = prop.getProperty("mlHost");
 		int dbPort = Integer.parseInt(prop.getProperty("mlPort"));
@@ -73,14 +73,13 @@ public class LinearRegressionNonThreaded {
 		String mlDbName = prop.getProperty("mlDbName");
 
 		int numProductsToPredict = 0;
-		
+
 		if (prop.getProperty("numProductsToPredict").equalsIgnoreCase("ALL")) {
-			numProductsToPredict = 99999; 
-		}
-		else { 
+			numProductsToPredict = 99999;
+		} else {
 			numProductsToPredict = Integer.parseInt(prop.getProperty("numProductsToPredict"));
 		}
-		
+
 		System.out.println("***** Properties ****");
 		System.out.println("mlUser " + dbUser);
 		System.out.println("mlHost " + dbHost);
@@ -93,13 +92,13 @@ public class LinearRegressionNonThreaded {
 		DatabaseClient client = DatabaseClientFactory.newClient("localhost", 8000, "bnsf-content",
 				new DatabaseClientFactory.DigestAuthContext("admin", "admin"));
 		Operations operations = new Operations();
-		ArrayList<Order> lstOrders = operations.readOrderData(client, mlOrderCollection);
+		MarkLogicOperations mlOperations = new MarkLogicOperations();
+		ArrayList<Order> lstOrders = mlOperations.readOrderData(client, mlOrderCollection);
 		List<Row> training_data = operations.getTrainingData(lstOrders);
 		List<String> uniqueProductList = operations.getUniqueProductList(training_data);
 		System.out.println("Number of unique Products::" + uniqueProductList.size());
 
 		SparkSession spark = SparkSession.builder().appName("MarkLogicSparkIntegrationNonThreaded").getOrCreate();
-
 
 		StructType schema = createStructType(new StructField[] { createStructField("year", IntegerType, false),
 				createStructField("product", StringType, false), createStructField("quantity", IntegerType, false) });
@@ -118,12 +117,10 @@ public class LinearRegressionNonThreaded {
 		int numTasks = 0;
 		if (numProductsToPredict == 9999) {
 			numTasks = uniqueProductList.size();
-		}
-		else
-		{
+		} else {
 			numTasks = numProductsToPredict;
 		}
-		
+
 		for (int iCounter = 0; iCounter < numTasks; iCounter++) {
 			System.out.println("Doing prediction for ::" + uniqueProductList.get(iCounter));
 
@@ -133,13 +130,13 @@ public class LinearRegressionNonThreaded {
 			LinearRegression lr = new LinearRegression().setRegParam(0.3).setElasticNetParam(.8).setMaxIter(10)
 					.setTol(1E-6).setFeaturesCol("features").setLabelCol("quantity");
 			LinearRegressionModel model = lr.fit(input_for_regression);
-			
+
 			HyperParameters hyperParameters = new HyperParameters();
 			hyperParameters.setElasticNet(model.getElasticNetParam());
 			hyperParameters.setTolerance(model.getTol());
 			hyperParameters.setNumIterations(model.getMaxIter());
 			hyperParameters.setLambda(model.getRegParam());
-			
+
 			// input_for_regression.show(200,false);
 			// Print the coefficients and intercept for generalized linear
 			// regression model
@@ -169,16 +166,13 @@ public class LinearRegressionNonThreaded {
 			test_data_set = input_for_regression.union(test_data_set);
 			// Prediction
 			Dataset<?> predictions = model.transform(test_data_set);
-			predictions.show(200,false);
-			
+			predictions.show(200, false);
+
 			Encoder<Prediction> predictionEncoder = Encoders.bean(Prediction.class);
 			List<Prediction> predictionList = new ArrayList<>();
 			predictionList = predictions.as(predictionEncoder).collectAsList();
-			operations.insertPredictions(predictionList, 
-										 client, 
-										 uniqueProductList.get(iCounter),
-										 hyperParameters,
-										 modelSummary);
+			mlOperations.insertPredictions(predictionList, client, uniqueProductList.get(iCounter), hyperParameters,
+					modelSummary);
 		}
 		spark.stop();
 		// client.release();

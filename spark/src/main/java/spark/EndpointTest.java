@@ -17,7 +17,7 @@ import com.marklogic.client.DatabaseClient;
 import com.marklogic.client.DatabaseClientFactory;
 
 public class EndpointTest {
-	
+
 	protected static String dbUser = "";
 	static String dbHost = "";
 	static int dbPort = 0;
@@ -28,6 +28,9 @@ public class EndpointTest {
 	static int noRestPort = 0;
 	static String endPointModuleName = "";
 	static String endPointModulePath = "";
+	static String modelPath = "";
+	static String includeTraining = "";
+
 	public static void main(String[] args) throws IOException, InterruptedException {
 
 		Logger.getLogger("org").setLevel(Level.ERROR);
@@ -51,7 +54,9 @@ public class EndpointTest {
 		noRestPort = Integer.parseInt(prop.getProperty("noRestPort"));
 		endPointModuleName = prop.getProperty("endPointModuleName");
 		endPointModulePath = prop.getProperty("endPointModulePath");
-		
+		modelPath = prop.getProperty("pathToStoreModel");
+		includeTraining = prop.getProperty("includeTraining");
+
 		System.out.println("***** Properties ****");
 		System.out.println("mlUser " + dbUser);
 		System.out.println("mlHost " + dbHost);
@@ -63,7 +68,6 @@ public class EndpointTest {
 		System.out.println("noRestPort " + noRestPort);
 		System.out.println("endPointModuleName " + endPointModuleName);
 		System.out.println("endPointModulePath " + endPointModulePath);
-		
 
 		SparkConf sparkConf = new SparkConf();
 		sparkConf.setAppName("MarkLogicSparkConnector").setMaster("local");
@@ -72,16 +76,17 @@ public class EndpointTest {
 		sparkConf.set("MarkLogic_Database", mlDbName);
 		sparkConf.set("MarkLogic_User", dbUser);
 		sparkConf.set("MarkLogic_Password", dbPwd);
-		
+
 		Operations operations = new Operations();
 		List<String> products = operations.tokenizeProducts(productsToPredict);
 		SparkSession spark = SparkSession.builder().appName("MarkLogicSparkConnector").config(sparkConf).getOrCreate();
-		
+
 		ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 		System.out.println("Spawning " + Runtime.getRuntime().availableProcessors() + " threads...");
 
 		for (int iCounter = 0; iCounter < products.size(); iCounter++) {
-			executor.execute(new MyEndpointPredictions(iCounter, spark,products.get(iCounter)));
+			executor.execute(
+					new MyEndpointPredictions(iCounter, spark, products.get(iCounter), modelPath, includeTraining));
 		}
 		executor.awaitTermination(1, TimeUnit.HOURS);
 		executor.shutdown(); // once you are done with ExecutorService
@@ -97,17 +102,23 @@ class MyEndpointPredictions implements Runnable {
 	DatabaseClient noRestClient;
 	String endPointModulePath;
 	String endPointModuleName;
+	String modelPath;
+	String includeTraining;
 
-	public MyEndpointPredictions(int i, SparkSession spark, String productName) {
+	public MyEndpointPredictions(int i, SparkSession spark, String productName, String modelPath,
+			String includeTraining) {
 		this.id = i;
 		this.spark = spark;
 		this.productName = productName;
 		this.noRestClient = DatabaseClientFactory.newClient(EndpointTest.dbHost, EndpointTest.noRestPort,
 				new DatabaseClientFactory.DigestAuthContext(EndpointTest.dbUser, EndpointTest.dbPwd));
-		this.restClient = DatabaseClientFactory.newClient(EndpointTest.dbHost, EndpointTest.dbPort, EndpointTest.mlDbName,
+		this.restClient = DatabaseClientFactory.newClient(EndpointTest.dbHost, EndpointTest.dbPort,
+				EndpointTest.mlDbName,
 				new DatabaseClientFactory.DigestAuthContext(EndpointTest.dbUser, EndpointTest.dbPwd));
 		this.endPointModuleName = EndpointTest.endPointModuleName;
 		this.endPointModulePath = EndpointTest.endPointModulePath;
+		this.modelPath = EndpointTest.modelPath;
+		this.includeTraining = EndpointTest.includeTraining;
 	}
 
 	public void run() {
@@ -115,8 +126,8 @@ class MyEndpointPredictions implements Runnable {
 			Operations operations = new Operations();
 			System.out.println(
 					"Prediction for '" + productName + "' started by Thread " + Thread.currentThread().getName());
-			operations.performEndpointPredictions(spark, noRestClient, restClient, productName, 
-					endPointModuleName,endPointModulePath);
+			operations.performEndpointPredictions(spark, noRestClient, restClient, productName, endPointModuleName,
+					endPointModulePath, modelPath, includeTraining);
 			System.out.println(
 					"Prediction for '" + productName + "' ended by Thread " + Thread.currentThread().getName());
 		} catch (Exception err) {
